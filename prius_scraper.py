@@ -1,5 +1,5 @@
-import pickle
 import requests
+import json
 import os
 import re
 from bs4 import BeautifulSoup
@@ -7,11 +7,12 @@ from bs4 import BeautifulSoup
 data_dir = "data/"
 dir_files = os.listdir(data_dir)
 
-with open('state_city_dict.pickle', 'rb') as f:
-	state_city_dict = pickle.load(f)
+with open('state_city_dict.json', 'r', encoding="utf-8") as f:
+	state_city_dict = json.load(f)
 
 def make_dirs():
 	# Initialize directorys and subdirectories for data storage
+	pattern = re.compile('[\W_]+')
 	for state in state_city_dict:
 		cities = state_city_dict[state]
 		state = state.replace(' ', '')
@@ -39,13 +40,12 @@ def load_link(search_link, state, city):
 
 		if fn in dir_list:
 			print('Loading html for: ' + fn)
-			with open(dir_path + fn, 'r') as f:
+			with open(dir_path + fn, 'r', encoding="utf-8") as f:
 				html = f.read()
 		else:
 			print('Downloading html for: ' + fn)
 			html = res.text
-			html = html.encode('utf-8')
-			with open(dir_path + fn, 'w') as f:
+			with open(dir_path + fn, 'w', encoding="utf-8") as f:
 				f.write(html)
 	return html
 
