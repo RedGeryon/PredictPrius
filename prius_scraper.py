@@ -3,11 +3,12 @@ import json
 import os
 import re
 from bs4 import BeautifulSoup
+from time import sleep
 
-data_dir = "data/"
+data_dir = 'data/'
 dir_files = os.listdir(data_dir)
 
-with open('state_city_dict.json', 'r', encoding="utf-8") as f:
+with open('state_city_dict.json', 'r', encoding='utf-8') as f:
 	state_city_dict = json.load(f)
 
 def make_dirs():
@@ -29,33 +30,44 @@ def load_link(search_link, state, city):
 	pattern = re.compile('[\W_]+')
 	fn = pattern.sub('', search_link) + '.html'
 	
-	res = requests.get(search_link)
-	if res.status_code == 200:
-		state = state.replace(' ', '')
-		city = city.replace(' ', '')
-		city = pattern.sub('', city)
-		
-		dir_path = data_dir + state + '/' + city + '/'
-		dir_list = os.listdir(dir_path)
+	state = state.replace(' ', '')
+	city = city.replace(' ', '')
+	city = pattern.sub('', city)
+	dir_path = data_dir + state + '/' + city + '/'
+	dir_list = os.listdir(dir_path)
 
-		if fn in dir_list:
-			print('Loading html for: ' + fn)
-			with open(dir_path + fn, 'r', encoding="utf-8") as f:
-				html = f.read()
-		else:
-			print('Downloading html for: ' + fn)
+	if fn in dir_list:
+		print('Loading html for: ' + fn)
+		with open(dir_path + fn, 'r', encoding='utf-8') as f:
+			html = f.read()
+	else:
+		print('Downloading html for: ' + fn)
+		print(search_link)
+
+		# Catching some buggy links
+		if search_link == '//newyork.craigslist.org/fct//search/sso?sort=rel&bundleDuplicates=1&auto_make_model=prius&min_price=1000':
+			return ''
+
+		res = requests.get(search_link)
+		if res.status_code == 200:
 			html = res.text
-			with open(dir_path + fn, 'w', encoding="utf-8") as f:
+			with open(dir_path + fn, 'w', encoding='utf-8') as f:
 				f.write(html)
+		else:
+			html = ''
+			print('Error in downloading ' + search_link)
 	return html
 
 def return_totalcounts(html):
 	# Find # items, we only need to generate new pages to scrape if
 	# page counts is more than 120. This module does double duty and also
 	# chops up html if search yields nothing or has exlusions
-	exclude = "Few local results found. Here are some from nearby areas."
-	nothing = "Nothing found for that search."
+	exclude = 'Few local results found. Here are some from nearby areas.'
+	nothing = 'Nothing found for that search.'
 
+	if not html:
+		totalitems = 0
+		return html, totalitems
 	if nothing in html:
 		totalitems = 0
 		print('No items found in search')
@@ -66,19 +78,20 @@ def return_totalcounts(html):
 		e_indx = (html.find(exclude))
 		html = html[:e_indx-45]
 		totalitems = 0
-		print("Too few results")
+		print('Too few results')
 	else:
 		items = BeautifulSoup(html, 'lxml')
 		items = items.find_all('span', class_='totalcount')
 		# Something's wrong if there are no item totalcounts on webpage
 		if not len(items) >= 1:
 			print("Total count doesn't exist on page")
+			totalitems = 0
+			return html, totalitems
 		totalitems = int(items[0].text)
 	return html, totalitems
 
 def find_item_links(html):
 	item_links = []		
-		
 	soup = BeautifulSoup(html, 'lxml')
 
 	# CL will group duplicates and nest them/hide them away, so we have to remove
@@ -93,15 +106,6 @@ def find_item_links(html):
 		item_links.append(link)
 	return item_links
 
-# # Set some initial params for testing
-# mystate = 'california'
-# mycity = 'SF bay area'
-# ca_cities = state_city_dict[mystate]
-# sf = ca_cities[mycity]
-# link = sf + '/' + search_params
-# html = load_link(link, mystate, mycity)
-# html, totalitems = return_totalcounts(html)
-
 def get_state_searches(state, sso=True):
 	'''Given a state, we will download searches for each of the city in the state'''
 
@@ -112,6 +116,8 @@ def get_state_searches(state, sso=True):
 		search_params = 'search/ssq?sort=rel&bundleDuplicates=1&auto_make_model=prius&min_price=1000'
 	
 	state_cities = state_city_dict[state]
+	cars_links = {}
+
 	for city in state_cities:
 		link = state_cities[city]
 		link += '/' + search_params
@@ -132,4 +138,73 @@ def get_state_searches(state, sso=True):
 			html = load_link(link, state, city)
 			links_in_city += find_item_links(html)
 
-get_state_searches('california')
+		cars_links[city] = links_in_city
+
+	# Lets cache it to file
+	state = state.replace(' ', '')
+	print('Dumping ' + state + ' cars_links.json to file')
+	with open(data_dir + state + '/' +\
+		'cars_links.json', 'w', encoding='utf-8') as f:
+		json.dump(cars_links, f)
+
+
+def get_car_info(state):
+	global subtotal
+	pattern = re.compile('[\W_]+')
+	state = state.replace(' ', '')
+	fn = 'cars_links.json'
+	fp = data_dir + state + '/' + fn
+	
+	with open(fp, 'r') as f:
+		state_car_links = json.load(f)
+	
+	# Counter for VPN break time
+	counter = 0
+	data_count = 0
+
+	for city in state_car_links:
+		print('Looking at search data for ' + city + ', ' + state)
+		links = state_car_links[city]
+		city = city.replace(' ', '')
+		city = pattern.sub('', city)
+		dir_path = data_dir + state + '/' + city + '/'
+		dir_content = os.listdir(dir_path)
+
+		# Start with last link, then pop out of links list
+		while links:
+			link = links[-1]
+			links.pop()
+			data_count += 1
+			save_name = pattern.sub('', link)[:-4] + '.html'
+
+			# If we've already cached file, then read cache, dl otherwise
+			if save_name in dir_content:
+				subtotal += 1
+				print('Loading ' + link)
+				with open(dir_path + save_name, 'r', encoding='utf-8') as f:
+					html = f.read()
+			else:
+				print(counter, 'Downloading ' + link)
+				# Sleep here so we can switch VPNs
+				if counter/700 == 1:
+					print('SWITCH VPNS NOW!!')
+					sleep(10)
+					counter = 0
+
+				res = requests.get(link)
+				if res.status_code == 200:
+					html = res.text
+					with open(dir_path + save_name, 'w', encoding='utf-8') as f:
+						f.write(html)
+					counter += 1
+				else:
+					print('Cannot download search for ' + link)
+					continue
+	print('Total data for ' + state + ' : ' + str(data_count))
+
+subtotal = 0
+for state in state_city_dict:
+	print('GETTING READY TO SCRAPE FOR ' + state)
+	get_state_searches(state)
+	get_car_info(state)
+	print('Subtotal CL listings in US: ', subtotal)

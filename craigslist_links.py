@@ -3,6 +3,7 @@ import os
 from bs4 import BeautifulSoup
 import re
 import pickle
+import json
 
 def link_state(overwrite=False):
 	# Set initial directory and files info
@@ -15,21 +16,21 @@ def link_state(overwrite=False):
 	# Download if not already downloaded, otherwise pull from cache
 	if fn in dir_files and not overwrite:
 		print("Loading file: " + fn)
-		with open(data_dir + fn, 'rb') as f:
+		with open(data_dir + fn, 'r', encoding='utf-8') as f:
 			html = f.read()
 	else:
 		print("Downloading: " + fn)
+		print(start)
 		res = requests.get(start)
 		if res.status_code == 200:
 			html = res.text
-			html = html.encode('utf-8')
-			with open(data_dir+fn, 'wb') as f:
+			with open('test', 'w', encoding='utf-8') as f:
 				f.write(html)
+
 		else:
 			print("Couldn't grab, error:", res.status_code)
 
 	soup = BeautifulSoup(html, 'lxml')
-
 	state_link = {}
 
 	for element in soup.select('ul.acitem'):
@@ -59,15 +60,15 @@ def link_city(state, state_dic, overwrite=False):
 
 	if fn in dir_files and not overwrite:
 		print("Loading file: " + fn)
-		with open(data_dir + fn, 'rb') as f:
+		with open(data_dir + fn, 'r', encoding='utf-8') as f:
 			html = f.read()
 	else:
 		print("Downloading: " + fn)
 		res = requests.get(link)
 		if res.status_code:
 			html = res.text
-			html = html.encode('utf-8')
-			with open(data_dir+fn, 'wb') as f:
+			html = html
+			with open(data_dir+fn, 'w', encoding='utf-8') as f:
 				f.write(html)
 
 	city_link = {}
@@ -80,8 +81,14 @@ def link_city(state, state_dic, overwrite=False):
 		cities = soup.find_all('ul', class_='geo-site-list')
 		cities = cities[0].find_all('a', href=True)
 		for city in cities:
-			c_name = city.text.encode('utf-8')
+			c_name = city.text
 			c_link = city['href']
+			# Sometimes link adds slashes at end
+			if c_link[-1] == '/':
+				c_link = c_link[:-1]
+			# Sometimes link has no http: in front
+			if c_link[0] == '/':
+				c_link = 'http:' + c_link[:-1]
 			city_link[c_name] = c_link
 	except:
 		print("Webpage for " + state + "redirected. Trying something else.")
@@ -94,21 +101,42 @@ def link_city(state, state_dic, overwrite=False):
 
 		cities = cities[0].find_all('a', href=True)
 		for city in cities:
-			c_name = city.text.encode('utf-8')
+			c_name = city.text
 			c_link = 'http:' + city['href']
+			# Some links have extra slashes which will cause trouble
+			# Sometimes link adds slashes at end
+			if c_link[-1] == '/':
+				c_link = c_link[:-1]
+			# Sometimes link has no http: in front
+			if c_link[0] == '/':
+				c_link = 'http:' + c_link[:-1]
 			city_link[c_name] = c_link
 
 	return city_link
 
-def pickle_dic(overwrite=False):
+def dict_to_json(overwrite=False):
 	state_city_dict = {}
 
 	state_dict = link_state(overwrite=overwrite)
 	for state in state_dict:
 		cities = link_city(state, state_dict, overwrite=overwrite)
 		state_city_dict[state] = cities
+	
+	# Delete problematic entries in dict
+	del state_city_dict['guam']
+	del state_city_dict['hawaii']
 
-	with open('state_city_dict.pickle', 'wb') as f:
-		pickle.dump(state_city_dict, f,  protocol=pickle.HIGHEST_PROTOCOL)
+	with open('state_city_dict.json', 'w', encoding='utf-8') as f:
+		json.dump(state_city_dict, f)
 
-pickle_dic()
+# inspect links
+def open_dict():
+	with open('state_city_dict.json', 'r', encoding='utf-8') as f:
+		data = json.load(f)
+		for state in data:
+			cities = data[state]
+			for city in cities:
+				print(cities[city])
+
+# dict_to_json(overwrite=False)
+# open_dict()
