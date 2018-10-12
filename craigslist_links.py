@@ -5,6 +5,8 @@ import re
 import pickle
 import json
 
+# We are going to scrape craiglists for a link to all
+# CL state links
 def link_state(overwrite=False):
 	# Set initial directory and files info
 	data_dir = "data/"
@@ -47,7 +49,8 @@ def link_state(overwrite=False):
 	return state_link
 
 def link_city(state, state_dic, overwrite=False):
-	'''Given a state, and a dict that links state name to CL link, find all city links'''
+	'''Given a state, and a dict that links state name to CL url, find all city links
+	within that state'''
 	
 	# Set initial directory and files info
 	data_dir = "data/"
@@ -114,6 +117,7 @@ def link_city(state, state_dic, overwrite=False):
 
 	return city_link
 
+# Lets put the links to each city, organized by state, into a json file
 def dict_to_json(overwrite=False):
 	state_city_dict = {}
 
@@ -124,6 +128,7 @@ def dict_to_json(overwrite=False):
 	
 	# Delete problematic entries in dict
 	del state_city_dict['guam']
+	del state_city_dict['puerto rico']
 	del state_city_dict['hawaii']
 
 	with open('state_city_dict.json', 'w', encoding='utf-8') as f:

@@ -11,6 +11,8 @@ dir_files = os.listdir(data_dir)
 with open('state_city_dict.json', 'r', encoding='utf-8') as f:
 	state_city_dict = json.load(f)
 
+# Lets initialize our directories to cache html. Each state will
+# be a folder, within each state-folder is a city folder.
 def make_dirs():
 	# Initialize directorys and subdirectories for data storage
 	pattern = re.compile('[\W_]+')
@@ -23,6 +25,7 @@ def make_dirs():
 			path = data_dir + state + '/' + city + '/'
 			if not os.path.exists(os.path.dirname(path)):
 				os.makedirs(os.path.dirname(path))
+
 
 def load_link(search_link, state, city):
 	'''Give this a CL search link, state and city name, will
@@ -59,7 +62,7 @@ def load_link(search_link, state, city):
 	return html
 
 def return_totalcounts(html):
-	# Find # items, we only need to generate new pages to scrape if
+	# Find num of items on search results, we only need to generate new pages to scrape if
 	# page counts is more than 120. This module does double duty and also
 	# chops up html if search yields nothing or has exlusions
 	exclude = 'Few local results found. Here are some from nearby areas.'
@@ -90,6 +93,8 @@ def return_totalcounts(html):
 		totalitems = int(items[0].text)
 	return html, totalitems
 
+# Within the search results, we will scrape html to individual listings
+# to scrape additional info
 def find_item_links(html):
 	item_links = []		
 	soup = BeautifulSoup(html, 'lxml')
@@ -141,18 +146,24 @@ def get_state_searches(state, sso=True):
 		cars_links[city] = links_in_city
 
 	# Lets cache it to file
+	if sso:
+		cars_link_name = 'cars_links_sso.json'
+	else:
+		cars_link_name = 'cars_links_ssq.json'
 	state = state.replace(' ', '')
 	print('Dumping ' + state + ' cars_links.json to file')
 	with open(data_dir + state + '/' +\
-		'cars_links.json', 'w', encoding='utf-8') as f:
+		cars_link_name, 'w', encoding='utf-8') as f:
 		json.dump(cars_links, f)
 
-
-def get_car_info(state):
+def get_car_info(state, sso=True):
 	global subtotal
 	pattern = re.compile('[\W_]+')
 	state = state.replace(' ', '')
-	fn = 'cars_links.json'
+	if sso:
+		fn = 'cars_links_sso.json'
+	else:
+		fn = 'cars_links_ssq.json'
 	fp = data_dir + state + '/' + fn
 	
 	with open(fp, 'r') as f:
@@ -205,6 +216,6 @@ def get_car_info(state):
 subtotal = 0
 for state in state_city_dict:
 	print('GETTING READY TO SCRAPE FOR ' + state)
-	get_state_searches(state)
-	get_car_info(state)
+	get_state_searches(state, sso=False)
+	get_car_info(state, sso=False)
 	print('Subtotal CL listings in US: ', subtotal)
